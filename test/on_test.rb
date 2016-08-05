@@ -11,11 +11,26 @@ class OnTest < Spec
       assert_equal "please provide at least one callback", e.message
     end
 
-    test "block missing" do
+    test "works now w/o a block" do
+      On.new :success
+    end
+
+    test "must provide a block in initialize" do
+      on = On.new :success
       e = assert_raises ArgumentError do
-        On.new :success
+        on.call :success
       end
-      assert_equal "please provide a block", e.message
+
+      assert_equal "block not provided in `initialize` or in `call`", e.message
+    end
+
+    test "cannot provide block in initialize and call" do
+      on = On.new(:success) {}
+      e = assert_raises ArgumentError do
+        on.call(:success) {}
+      end
+
+      assert_equal "cannot provide block to both `initialize` and `call`", e.message
     end
   end
 
@@ -72,6 +87,16 @@ class OnTest < Spec
       refute recorder.block_called?
 
       assert_nil on.callback
+    end
+
+    test "re-use 'on' object" do
+      on = On.new(:success)
+
+      on.call :success, :foo, &recorder
+      assert_callback recorder, :success, :foo
+
+      on.call :success, :bar, &recorder
+      assert_callback recorder, :success, :bar
     end
   end
 end

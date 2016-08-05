@@ -23,30 +23,27 @@ require 'set'
 #    end
 #  end
 class On
-  # Returns the Callback called or +nil+ if none called.
-  attr_reader :callback
-
-  def initialize(*callbacks, &block)
+  def initialize(*callbacks, result_klass: Result, &block)
     raise ArgumentError, "please provide at least one callback" if callbacks.empty?
-    raise ArgumentError, "please provide a block" unless block
-    @callbacks  = Set.new(callbacks)
-    @callback   = nil
-    @block      = block
+    @callbacks = Set.new(callbacks)
+    @result_klass = result_klass
+    @result = @result_klass.new(@callbacks, &block) if block
   end
 
   # Dispatch callback.
-  def call(name, *args)
-    validate_callback!(name)
-    @callback = Callback.new(name, args)
-    @block.call(self)
+  def call(name, *args, &block)
+    result = if block
+      raise ArgumentError, "cannot provide block to both `initialize` and `call`" if @result
+      @result_klass.new(@callbacks, &block)
+    else
+      raise ArgumentError, "block not provided in `initialize` or in `call`" unless @result
+      @result
+    end
+    result.call(name, *args)
   end
 
-  # Handle a callback.
-  def on(name, &block)
-    validate_callback!(name)
-    if @callback && @callback.name == name
-      block.call(*callback.args)
-    end
+  def callback
+    @result && @result.callback
   end
 
   # Returns a list of supported callback names provided in the initializer.
@@ -58,17 +55,42 @@ class On
   class Callback < Struct.new(:name, :args)
   end
 
-  class InvalidCallback < StandardError # :nodoc:
-    def initialize(name)
-      super("Invalid callback #{name.inspect}")
+  class Result
+    attr_reader :callbacks
+    attr_reader :callback
+
+    def initialize(callbacks, &block)
+      @callbacks = callbacks
+      @block = block
+      @callback = nil
+    end
+
+    def call(name, *args)
+      validate_callback!(name)
+      @callback = Callback.new(name, args)
+      @block.call(self)
+    end
+
+    # Handle a callback.
+    def on(name, &block)
+      validate_callback!(name)
+      if @callback && @callback.name == name
+        block.call(*@callback.args)
+      end
+    end
+
+    private
+
+    def validate_callback!(name)
+      unless @callbacks.include?(name)
+        raise InvalidCallback, name
+      end
     end
   end
 
-  private
-
-  def validate_callback!(name)
-    unless @callbacks.include?(name)
-      raise InvalidCallback, name
+  class InvalidCallback < StandardError # :nodoc:
+    def initialize(name)
+      super("Invalid callback #{name.inspect}")
     end
   end
 end
